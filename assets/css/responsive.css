@@ -1,0 +1,43 @@
+/* =====================================================================
+   MSDMS · responsive.css – tablet and mobile layouts
+   ===================================================================== */
+@media (max-width: 1399.98px) {
+  .grid-3 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .track-layout { grid-template-columns: minmax(0, 1fr) 340px; }
+}
+@media (max-width: 1199.98px) {
+  .grid-2-1, .dist-layout { grid-template-columns: minmax(0, 1fr); }
+  .track-layout { grid-template-columns: minmax(0, 1fr); }
+  .track-map { position: static; height: 460px; min-height: 0; } #map { min-height: 460px; }
+  .rep-layout { grid-template-columns: minmax(0, 1fr); }
+  .rep-menu { position: static; max-height: 230px; }
+}
+@media (max-width: 991.98px) {
+  .sidebar { position: fixed; left: 0; top: 0; transform: translateX(-100%); transition: transform .22s ease; }
+  .nav-open .sidebar { transform: none; box-shadow: 4px 0 24px rgba(0, 0, 0, .3); }
+  .nav-open .backdrop { display: block; position: fixed; inset: 0; background: rgba(8, 20, 45, .5); z-index: 1035; }
+  .grid-2, .grid-3 { grid-template-columns: minmax(0, 1fr); }
+  .login-wrap { grid-template-columns: 1fr; }
+  .login-hero { padding: 1.6rem 1.25rem; border-right: 0; border-bottom: 4px solid var(--saffron); }
+  .login-hero h1 { font-size: 1.35rem; } .hero-pts { display: none; }
+}
+@media (max-width: 767.98px) {
+  .content { padding: .9rem 1rem 5rem; }
+  .topbar { padding: .5rem .8rem; gap: .5rem; }
+  .top-title h1 { font-size: 1rem; } .crumb { display: none; }
+  .lang-toggle .btn { padding: .25rem .4rem; }
+  .kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .55rem; }
+  .kpi { padding: .6rem; gap: .5rem; flex-direction: column; } .kpi-ic { width: 30px; height: 30px; font-size: .9rem; } .kpi-val { font-size: 1.15rem; }
+  .tbl-search, .tbl-search input { width: 100%; } .tbl-filter { max-width: none; flex: 1 1 45%; }
+  .tbl-bar .ms-auto { margin-left: 0 !important; width: 100%; }
+  .filter-bar label { flex: 1 1 45%; } .filter-bar .form-select, .filter-bar .form-control { min-width: 0; width: 100%; }
+  .act span { display: none; }
+  .id-card { flex-direction: column; text-align: center; }
+  .guide-canvas { width: 100% !important; }
+  .ai-fab span { display: none; } .ai-fab { padding: .8rem; border-radius: 50%; }
+  .school-head { flex-direction: column; align-items: flex-start; }
+  .ev-list { columns: 1; }
+  .rec { flex-wrap: wrap; }
+  .dash-map { height: 320px; }
+}
+@media print { .sidebar, .topbar, .foot, .ai-fab, .ai-chat, .tbl-bar, .tbl-foot { display: none !important; } .content { padding: 0; } }
