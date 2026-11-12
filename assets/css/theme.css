@@ -1,0 +1,93 @@
+/* =====================================================================
+   MSDMS · theme.css – shell and component parity with the OCCPL e-commerce portal
+   (floating crimson sidebar, pill navigation, glass header, gradient page band, tinted stat cards).
+   Loaded last so it refines style.css / dashboard.css.
+   ===================================================================== */
+:root { --glass: rgb(255 255 255 / 72%); --occpl-shadow-sm: 0 6px 24px rgb(214 31 69 / 8%); --occpl-shadow-md: 0 10px 40px rgb(67 56 202 / 12%); --r-card: 18px; --nav-w: 16rem; }
+
+/* ---------- Shell ---------- */
+.app-shell { gap: 16px; padding: 16px; }
+.main { gap: 16px; }
+.sidebar { position: sticky; top: 16px; align-self: flex-start; width: var(--nav-w); flex: 0 0 var(--nav-w); height: calc(100vh - 32px); padding: 20px 14px; gap: 8px; border-radius: 28px; background: var(--grad-brand); color: #fff; box-shadow: var(--occpl-shadow-md); transition: width .2s ease, flex-basis .2s ease; overflow: hidden; }
+.brand { padding: 4px 6px 12px; border: 0; gap: 12px; }
+.brand-mark { width: 2.4rem; height: 2.4rem; border-radius: 50%; background: #fff; color: var(--navy-2); font-weight: 800; font-size: .8rem; }
+.brand-name { font-weight: 700; font-size: 1.05rem; letter-spacing: .02em; } .brand-sub { color: rgb(255 255 255 / 80%); }
+.side-nav { padding: 0; display: flex; flex-direction: column; gap: 3px; }
+.nav-sec { margin: 8px 10px 2px; padding: 0; font-size: .7rem; font-weight: 600; letter-spacing: .12em; color: #fff; opacity: .7; }
+.nav-item { min-height: 2.6rem; padding: 0 14px; border-radius: 999px; border-left: 0; color: rgb(255 255 255 / 88%); font-weight: 600; font-size: .93rem; }
+.nav-item:hover { background: rgb(255 255 255 / 14%); color: #fff; }
+.nav-item.active { background: #fff; color: var(--navy-2); box-shadow: 0 4px 14px rgb(0 0 0 / 18%); }
+.nav-item.active .ai-tag { background: var(--grad-btn); }
+.side-foot { border-top: 1px solid rgb(255 255 255 / 18%); padding: 10px 6px 0; } .demo-chip { color: rgb(255 255 255 / 85%); }
+.topbar { position: sticky; top: 16px; z-index: 1030; min-height: 4rem; padding: 0 16px 0 12px; gap: 12px; border-radius: 22px; background: var(--glass); backdrop-filter: blur(14px); border: 1px solid var(--line); border-bottom: 3px solid var(--navy-3); box-shadow: var(--occpl-shadow-sm); }
+.spacer { flex: 1; }
+.icon-btn { width: 2.5rem; height: 2.5rem; border-radius: 12px; border: 1px solid transparent; background: transparent; color: var(--ink); font-size: 1.15rem; }
+.icon-btn:hover { background: #ecebfb; }
+.user-btn { border-radius: 12px; background: transparent; } .user-btn:hover { background: #ecebfb; }
+.avatar { background: var(--grad-btn); }
+.lang-toggle .btn { border-radius: 10px; } .lang-toggle .btn.active { background: var(--grad-btn); border-color: var(--navy-2); }
+.content { padding: 0 0 24px; }
+
+/* ---------- Page band ---------- */
+.page__head { position: relative; overflow: hidden; display: flex; align-items: center; gap: 18px; flex-wrap: wrap; padding: 22px 26px; border-radius: var(--r-card); color: #fff; box-shadow: var(--occpl-shadow-md);
+  background: radial-gradient(520px 220px at 88% -30%, rgb(255 255 255 / 26%), transparent 70%), radial-gradient(380px 200px at 0% 130%, rgb(255 255 255 / 12%), transparent 70%), var(--grad-brand); }
+.ph-icon { flex: none; width: 52px; height: 52px; border-radius: 16px; display: grid; place-items: center; font-size: 1.5rem; background: rgb(255 255 255 / 18%); border: 1px solid rgb(255 255 255 / 38%); box-shadow: inset 0 1px 0 rgb(255 255 255 / 30%), 0 6px 16px rgb(0 0 0 / 16%); }
+.ph-text { flex: 1; min-width: 0; } .page__head h1 { color: #fff; font-size: 1.75rem; font-weight: 700; letter-spacing: -.02em; margin: 0; text-shadow: 0 1px 2px rgb(0 0 0 / 18%); }
+.page__head p { color: rgb(255 255 255 / 88%); margin: 4px 0 0; font-size: .85rem; }
+.btn-ghost-w { background: rgb(255 255 255 / 14%); color: #fff; border: 1px solid rgb(255 255 255 / 45%); align-items: center; gap: .4rem; }
+.btn-ghost-w:hover { background: rgb(255 255 255 / 26%); border-color: #fff; color: #fff; }
+
+/* ---------- Components ---------- */
+.btn { border-radius: 10px; min-height: 2.4rem; }
+.btn-sm { min-height: 2rem; }
+.form-control, .form-select { border-radius: 10px; border-color: var(--line); }
+.form-control:focus, .form-select:focus { border-color: var(--saffron); box-shadow: 0 0 0 4px #ecebfb; }
+.panel { background: var(--glass); backdrop-filter: blur(10px); border-radius: var(--r-card); box-shadow: var(--occpl-shadow-sm); overflow: hidden; }
+.panel-h { background: transparent; } .panel-h h2 { font-size: 1rem; }
+.panel-h h2 i { color: var(--navy-2); }
+.filter-bar { background: var(--glass); backdrop-filter: blur(10px); border-radius: var(--r-card); box-shadow: var(--occpl-shadow-sm); }
+.data-table thead th { background: #eef0f5; color: #5d6285; }
+.data-table tbody tr:hover > * { background: #ecebfb; }
+.modal-content { border-radius: 18px; } .modal-header { background: var(--grad-btn); }
+.app-tabs { gap: 8px; margin-bottom: 12px; padding-bottom: 2px; }
+.app-tabs .nav-link { border: 1px solid var(--line); border-radius: 999px; background: #fff; color: var(--ink); padding: .4rem .95rem; }
+.app-tabs .nav-link.active { background: var(--grad-brand); color: #fff; border-color: transparent; box-shadow: none; }
+.app-tabs .nav-link.active .tab-count { background: rgb(255 255 255 / 25%); color: #fff; }
+.app-tabs + .panel { border-top-left-radius: var(--r-card); }
+.alert-row, .quick a, .eq, .deliv, .portal-card { border-radius: 14px; }
+
+/* tinted stat cards */
+.kpi { --c: #4338ca; position: relative; overflow: hidden; align-items: center; border-radius: 22px; padding: 16px; background: color-mix(in srgb, var(--c) 12%, #fff); border: 1px solid color-mix(in srgb, var(--c) 30%, var(--line)); box-shadow: none; }
+.kpi::after { content: ''; position: absolute; right: -18px; top: -18px; width: 84px; height: 84px; border-radius: 50%; background: color-mix(in srgb, var(--c) 18%, transparent); pointer-events: none; }
+.kpi .kpi-ic, .kpi-blue .kpi-ic, .kpi-green .kpi-ic, .kpi-saffron .kpi-ic, .kpi-red .kpi-ic { width: 46px; height: 46px; border-radius: 14px; background: var(--c); color: #fff; font-size: 1.3rem; position: relative; z-index: 1; }
+.kpi-body { position: relative; z-index: 1; }
+.kpi-val { font-size: 1.7rem; font-weight: 800; } .kpi-lbl { font-weight: 600; color: var(--ink-2); }
+.kpi-blue { --c: #0284c7; } .kpi-green { --c: #0b7a55; } .kpi-saffron { --c: #c77700; } .kpi-red { --c: #b42318; }
+.track-map { top: 96px; } .rep-menu { top: 96px; }
+
+/* ---------- Collapsed icon rail (desktop) ---------- */
+.nav-collapsed { --nav-w: 5.25rem; }
+.nav-collapsed .nav-item span, .nav-collapsed .nav-sec, .nav-collapsed .brand > div:not(.brand-mark), .nav-collapsed .ai-tag, .nav-collapsed .side-foot { display: none; }
+.nav-collapsed .nav-item { justify-content: center; padding: 0; } .nav-collapsed .brand { justify-content: center; padding-inline: 0; }
+.nav-collapsed .nav-item i { font-size: 1.15rem; }
+
+/* ---------- Tablet / phone: drawer ---------- */
+@media (max-width: 991.98px) {
+  .app-shell { display: block; padding: 12px; }
+  .sidebar { position: fixed; inset: 12px auto 12px 12px; height: auto; width: min(18rem, 84vw); flex-basis: auto; transform: translateX(-120%); transition: transform .22s ease; box-shadow: none; }
+  .nav-open .sidebar { transform: none; box-shadow: 0 10px 40px rgb(0 0 0 / 35%); }
+  .nav-collapsed .nav-item span, .nav-collapsed .nav-sec, .nav-collapsed .brand > div:not(.brand-mark), .nav-collapsed .ai-tag { display: revert; }
+  .nav-collapsed .nav-item { justify-content: flex-start; padding: 0 14px; }
+  .main { gap: 12px; } .topbar { top: 12px; }
+  .page__head { padding: 18px; } .page__head h1 { font-size: 1.4rem; }
+}
+@media (max-width: 767.98px) { .content { padding: 0 0 5rem; } .ph-icon { width: 44px; height: 44px; font-size: 1.25rem; } .page__head .ph-actions { display: none; } }
+
+/* ---------- fixes: scrollable menu, numbers that do not wrap ---------- */
+.side-nav { flex: 1 1 auto; min-height: 0; overflow-y: auto; scrollbar-width: none; }
+.side-nav::-webkit-scrollbar { display: none; }
+.nav-item { min-height: 2.4rem; }
+.kpi-grid, .kpi-cmd { grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); }
+.kpi-val { font-size: 1.5rem; white-space: nowrap; overflow-wrap: normal; }
+.kpi-lbl { overflow-wrap: anywhere; }
+.kpi { gap: 12px; } .kpi .kpi-ic { flex: none; width: 42px; height: 42px; }

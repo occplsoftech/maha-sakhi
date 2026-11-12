@@ -214,7 +214,7 @@ const App = {
     $('#bellList').innerHTML = (list.slice(0, 6).map(n => `<a class="ntf ${n.readBy.includes(u.id) ? '' : 'unread'}" href="notifications.html"><strong>${esc(n.title)}</strong><span>${esc(n.msg)}</span><small>${U.fmtDT(n.at)}</small></a>`).join('') || UI.empty('No notifications')) + `<a class="ntf-all" href="notifications.html">View all notifications</a>`;
   },
   shell(page) {
-    const u = Auth.user(), role = ROLES[u.role];
+    const u = Auth.user(), role = ROLES[u.role], navItem = NAV.flatMap(g => g.items).find(i => i.page === page), phIcon = navItem ? navItem.icon : 'grid';
     const scopeTxt = u.schoolId ? DB.name('schools', u.schoolId) : u.talukaId ? `${DB.name('talukas', u.talukaId)} Taluka` : u.districtId ? `${DB.name('districts', u.districtId)} District` : u.nodeId ? DB.nodeName(u.nodeId) : 'Maharashtra State';
     const nav = NAV.map(s => { const items = s.items.filter(i => i.roles.includes(u.role)); return items.length ? `<div class="nav-sec">${t(s.section)}</div>${items.map(i => `<a class="nav-item ${i.page === page ? 'active' : ''}" href="${i.page}.html"><i class="bi bi-${i.icon}"></i><span>${t('page.' + i.page)}</span>${i.ai ? '<em class="ai-tag">AI</em>' : ''}</a>`).join('')}` : ''; }).join('');
     document.body.innerHTML = `
@@ -227,10 +227,9 @@ const App = {
       <div class="backdrop" id="backdrop"></div>
       <div class="main">
         <header class="topbar">
-          <button class="icon-btn d-lg-none" id="menuBtn" aria-label="Menu"><i class="bi bi-list"></i></button>
-          <div class="top-title"><h1>${t('page.' + page)}</h1><div class="crumb"><i class="bi bi-geo"></i> ${esc(scopeTxt)} · FY ${U.fy()}</div></div>
+          <button class="icon-btn" id="menuBtn" aria-label="Toggle navigation"><i class="bi bi-list"></i></button>
+          <span class="spacer"></span>
           <div class="top-tools">
-            <button class="btn btn-sm btn-saffron d-none d-md-inline-flex" id="guideBtn"><i class="bi bi-signpost-split"></i> ${t('c.guide')}</button>
             <div class="btn-group btn-group-sm lang-toggle" role="group" aria-label="Language"><button class="btn ${Lang.cur === 'en' ? 'active' : ''}" data-lang="en">EN</button><button class="btn ${Lang.cur === 'mr' ? 'active' : ''}" data-lang="mr">मराठी</button></div>
             <div class="dropdown"><button class="icon-btn" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-label="Notifications"><i class="bi bi-bell"></i><span class="bell-count" id="bellCount" hidden>0</span></button><div class="dropdown-menu dropdown-menu-end ntf-menu" id="bellList"></div></div>
             <div class="dropdown"><button class="user-btn" data-bs-toggle="dropdown"><span class="avatar">${esc(u.name.split(' ').filter(x => /^[A-Z]/.test(x) && !/^Dr/.test(x)).slice(0, 2).map(x => x[0]).join(''))}</span><span class="d-none d-md-block text-start"><strong>${esc(u.name)}</strong><small>${esc(role.label)}</small></span><i class="bi bi-chevron-down small"></i></button>
@@ -245,11 +244,12 @@ const App = {
               </div></div>
           </div>
         </header>
+        <section class="page__head"><div class="ph-icon"><i class="bi bi-${phIcon}"></i></div><div class="ph-text"><h1>${t('page.' + page)}</h1><p><i class="bi bi-geo-alt"></i> ${esc(scopeTxt)} · FY ${U.fy()} · ${esc(role.label)}</p></div><div class="ph-actions"><button class="btn btn-ghost-w d-none d-md-inline-flex" id="guideBtn"><i class="bi bi-signpost-split"></i> ${t('c.guide')}</button></div></section>
         <main class="content" id="content"></main>
         <footer class="foot">Demonstration prototype with fictional records. Not an official Government of Maharashtra service. GPS, identity verification and AI outputs are simulated. Demo sign-in is not production security.</footer>
       </div>
     </div>`;
-    $('#menuBtn').onclick = () => document.body.classList.toggle('nav-open');
+    $('#menuBtn').onclick = () => document.body.classList.toggle(window.matchMedia('(max-width: 991.98px)').matches ? 'nav-open' : 'nav-collapsed');
     $('#backdrop').onclick = () => document.body.classList.remove('nav-open');
     $('#logoutBtn').onclick = () => { Auth.logout(); location.href = 'login.html'; };
     $('#resetBtn').onclick = () => App.resetData();
