@@ -67,6 +67,7 @@ const SchoolUI = {
       { name: 'type', label: 'School Type', type: 'select', required: true, options: this.TYPES, col: 4 },
       { name: 'lat', label: 'GPS Latitude', type: 'number', step: 'any', required: true, min: 15, max: 23, col: 4 }, { name: 'lng', label: 'GPS Longitude', type: 'number', step: 'any', required: true, min: 72, max: 81, col: 4 },
       { name: 'principal', label: 'Principal Name', required: true }, { name: 'principalMobile', label: 'Principal Mobile', required: true, pattern: '[0-9]{10}', error: '10-digit mobile number' },
+      s || limited ? null : { name: 'principalEmail', label: 'School admin / Principal login e-mail (optional)', type: 'email', col: 12, help: 'Creates the school admin login (demo password applies).' },
       { name: 'totalStudents', label: 'Total Students', type: 'number', required: true, min: 0, step: 1 }, { name: 'eligible', label: 'Eligible Beneficiaries', type: 'number', required: true, min: 0, step: 1 }].filter(Boolean), s || { type: 'Zilla Parishad' });
   },
   save(s, f) {
@@ -75,6 +76,7 @@ const SchoolUI = {
     if (f.udise && d.schools.some(x => x.udise === f.udise && x !== s)) throw new Error('UDISE+ code already exists.');
     if (s) { Audit.log('Schools', 'UPDATE', s.id, `${s.name} | ${s.principal}`, `${f.name} | ${f.principal}`); Object.assign(s, f); const n = DB.node(s.id); n.name = s.name; n.lat = s.lat; n.lng = s.lng; return s; }
     const t = DB.get('talukas', f.talukaId), id = `SCH-${U.pad(d.schools.length + 1, 3)}`;
+    if (f.principalEmail) Users.create({ name: f.principal, email: f.principalEmail, role: 'PRINCIPAL', districtId: t.districtId, talukaId: t.id, schoolId: id });
     const rec = { id, ...f, districtId: t.districtId, status: 'ACTIVE' }; d.schools.push(rec);
     d.nodes.push({ id, type: 'SCHOOL', name: f.name, districtId: t.districtId, talukaId: t.id, schoolId: id, lat: f.lat, lng: f.lng, capacity: 2000 });
     Audit.log('Schools', 'CREATE', id, '', f.name); return rec;
@@ -87,11 +89,12 @@ const SchoolUI = {
   empDialog(s, e, done) {
     UI.modal({
       title: e ? `Edit employee ${e.id}` : 'Add school employee', body: UI.fields([{ name: 'name', label: 'Employee name', required: true }, { name: 'mobile', label: 'Mobile', required: true, pattern: '[0-9]{10}', error: '10-digit mobile number' }, { name: 'designation', label: 'Role / designation', type: 'select', required: true, options: ['Clerk', 'Teacher', 'Lab Assistant', 'Health Coordinator', 'Store Keeper'] }, { name: 'active', label: 'Active', type: 'checkbox', col: 6, value: e ? e.active : true },
+        ...(e ? [] : [{ name: 'loginEmail', label: 'Login e-mail (optional, creates a school user login)', type: 'email', col: 12 }]),
         { html: '<label class="form-label">Distribution permissions</label>' }, { name: 'p_unload', label: 'Confirm unloading & goods receipt', type: 'checkbox', col: 12, value: e ? e.perms.unload : true }, { name: 'p_inventory', label: 'Update inventory / record damaged stock', type: 'checkbox', col: 12, value: e ? e.perms.inventory : true }, { name: 'p_distribute', label: 'Distribute to students (QR scan)', type: 'checkbox', col: 12, value: e ? e.perms.distribute : true }], e || {}),
       onSubmit: f => {
         const perms = { unload: f.p_unload, inventory: f.p_inventory, distribute: f.p_distribute }, rec = { name: f.name, mobile: f.mobile, designation: f.designation, active: f.active, perms };
         if (e) { Audit.log('School Employees', 'UPDATE', e.id, JSON.stringify(e.perms), JSON.stringify(perms)); Object.assign(e, rec); }
-        else { const id = `EMP-${U.pad(DB.d.employees.length + 1, 3)}`; DB.d.employees.push({ id, schoolId: s.id, ...rec }); Audit.log('School Employees', 'CREATE', id, '', f.name); }
+        else { const id = `EMP-${U.pad(DB.d.employees.length + 1, 3)}`; if (f.loginEmail) Users.create({ name: f.name, email: f.loginEmail, role: 'EMPLOYEE', districtId: s.districtId, talukaId: s.talukaId, schoolId: s.id, employeeId: id }); DB.d.employees.push({ id, schoolId: s.id, ...rec }); Audit.log('School Employees', 'CREATE', id, '', f.name); }
         DB.save(); UI.toast('Employee saved.'); done();
       }
     });
@@ -143,16 +146,50 @@ App.pages.schools = root => {
   });
 };
 
+/* ---------- User accounts (demo): created by the admin, officers, principals and for vendors ---------- */
+const Users = {
+  create(o) {
+    const email = String(o.email || '').trim().toLowerCase();
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw new Error('Enter a valid login e-mail.');
+    if (DB.d.users.some(u => u.email.toLowerCase() === email)) throw new Error('This login e-mail is already in use.');
+    const u = { ...o, id: `USR-${U.pad(DB.d.users.length + 1)}`, email };
+    DB.d.users.push(u); Audit.log('Users', 'CREATE_USER', u.id, '', `${ROLES[u.role].label} · ${email}`);
+    return u;
+  },
+  dialog() {
+    const d = DB.d, roles = ['STATE_OFFICER', 'DISTRICT_OFFICER', 'TALUKA_OFFICER', 'CENTRAL_WH', 'DISTRICT_WH', 'TALUKA_WH', 'TRANSPORT_MGR', 'PURCHASE_OFFICER', 'PRINCIPAL', 'EMPLOYEE'];
+    UI.modal({
+      title: 'Add user', size: 'lg', submit: 'Create user', submitIcon: 'person-plus',
+      body: UI.fields([{ name: 'name', label: 'Full name', required: true }, { name: 'email', label: 'Login e-mail', type: 'email', required: true },
+        { name: 'role', label: 'Role', type: 'select', required: true, col: 12, options: roles.map(r => ({ v: r, l: ROLES[r].label })) },
+        { name: 'districtId', label: 'District (district roles)', type: 'select', col: 4, options: d.districts.map(x => ({ v: x.id, l: x.name })) },
+        { name: 'talukaId', label: 'Taluka (taluka roles)', type: 'select', col: 4, options: d.talukas.map(x => ({ v: x.id, l: `${x.name} · ${DB.name('districts', x.districtId)}` })) },
+        { name: 'schoolId', label: 'School (school roles)', type: 'select', col: 4, options: d.schools.filter(s => s.status === 'ACTIVE').map(s => ({ v: s.id, l: `${s.id} · ${s.name}` })) }]) +
+        `<div class="steps-note mt-3"><i class="bi bi-info-circle"></i> The role decides the menu and permissions; the area decides which data the user can see. Vendors get their login when the vendor is created; students are registered by the school. Demo password: <code>${DEMO_PASSWORD}</code>.</div>`,
+      onSubmit: f => {
+        const o = { name: f.name, email: f.email, role: f.role }; let school = null;
+        if (['DISTRICT_OFFICER', 'DISTRICT_WH'].includes(f.role)) { if (!f.districtId) throw new Error('Select the district for this role.'); o.districtId = f.districtId; if (f.role === 'DISTRICT_WH') o.nodeId = 'WH-' + f.districtId; }
+        else if (['TALUKA_OFFICER', 'TALUKA_WH'].includes(f.role)) { const t = DB.get('talukas', f.talukaId); if (!t) throw new Error('Select the taluka for this role.'); o.talukaId = t.id; o.districtId = t.districtId; if (f.role === 'TALUKA_WH') o.nodeId = 'DC-' + t.id; }
+        else if (['PRINCIPAL', 'EMPLOYEE'].includes(f.role)) { school = DB.get('schools', f.schoolId); if (!school) throw new Error('Select the school for this role.'); o.schoolId = school.id; o.talukaId = school.talukaId; o.districtId = school.districtId; }
+        else if (f.role === 'CENTRAL_WH') o.nodeId = 'WH-CEN';
+        const nu = Users.create(o);
+        if (f.role === 'EMPLOYEE') { const eid = `EMP-${U.pad(d.employees.length + 1, 3)}`; d.employees.push({ id: eid, schoolId: school.id, name: f.name, mobile: '9000000000', designation: 'Clerk', perms: { unload: true, inventory: true, distribute: true }, active: true }); nu.employeeId = eid; }
+        App.commit(`User ${nu.id} created. They can sign in with ${nu.email}.`);
+      }
+    });
+  }
+};
+
 /* ---------- Page: Users & Roles ---------- */
 App.pages.users = root => {
   const pages = NAV.flatMap(s => s.items), roles = Object.keys(ROLES);
-  const scope = u => u.schoolId ? DB.name('schools', u.schoolId) : u.talukaId ? DB.name('talukas', u.talukaId) + ' Taluka' : u.districtId ? DB.name('districts', u.districtId) + ' District' : u.nodeId ? DB.nodeName(u.nodeId) : 'Maharashtra State';
+  const scope = u => u.supplierId ? DB.name('suppliers', u.supplierId) : u.schoolId ? DB.name('schools', u.schoolId) : u.talukaId ? DB.name('talukas', u.talukaId) + ' Taluka' : u.districtId ? DB.name('districts', u.districtId) + ' District' : u.nodeId ? DB.nodeName(u.nodeId) : 'Maharashtra State';
   root.innerHTML = `<div class="sim-banner"><i class="bi bi-shield-exclamation"></i> <strong>Demo authentication only.</strong> Sessions are held in browser LocalStorage for this prototype. A production system requires server-side authentication, MFA / OTP, password policy, encrypted storage and server-enforced authorisation.</div>` +
     UI.card('Demo user accounts', '<div id="uTbl"></div>', { icon: 'people' }) +
     UI.card('Role × module permission matrix', `<div class="table-responsive"><table class="table table-sm matrix"><thead><tr><th>Module</th>${roles.map(r => `<th><span>${ROLES[r].label}</span></th>`).join('')}</tr></thead><tbody>${pages.map(p => `<tr><td>${t('page.' + p.page)}</td>${roles.map(r => `<td>${p.roles.includes(r) ? '<i class="bi bi-check-circle-fill text-success"></i>' : '<i class="bi bi-dash text-muted"></i>'}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`, { icon: 'shield-lock' }) +
     UI.card('Security design', `<div class="sec-grid">${[['person-lock', 'Role-based access control', 'Navigation, pages and actions are authorised per role from one permission map.'], ['geo-alt', 'Geographic data restriction', 'District, taluka and school users only see records inside their jurisdiction.'], ['building-lock', 'School-level isolation', 'Principals and employees cannot open another school\'s inventory or students.'], ['incognito', 'Student privacy', 'Beneficiaries may be minors: reports are minimised, names masked, history visible only to the student and authorised school staff.'], ['fingerprint', 'Aadhaar disabled', 'No Aadhaar data is collected or stored. Identity verification is a simulated status only.'], ['clock-history', 'Session expiry', `Idle sessions expire after ${DB.d.settings.sessionMinutes} minutes.`], ['journal-check', 'Audit trail', 'Every create, update, approval, stock and distribution action is logged with user, role and old/new values.'], ['diagram-2', 'Approval workflows', 'Allocations, additional requests and discrepancies follow configurable approval levels.']].map(x => `<div><i class="bi bi-${x[0]}"></i><strong>${x[1]}</strong><p>${x[2]}</p></div>`).join('')}</div>
       ${Auth.is('STATE_ADMIN') ? `<hr><form class="row g-2 align-items-end" id="sessForm"><div class="col-auto"><label class="form-label" for="sessMin">Session expiry (minutes of inactivity)</label><input class="form-control form-control-sm" id="sessMin" type="number" min="5" max="240" required value="${DB.d.settings.sessionMinutes}"></div><div class="col-auto"><button class="btn btn-sm btn-primary">Save</button></div></form>` : ''}`, { icon: 'shield-check' });
-  UI.table('#uTbl', { id: 'usr', rows: DB.d.users, exportName: 'users', pageSize: 12, filters: [{ key: 'lvl', label: 'Level', get: u => ROLES[u.role].level }],
+  UI.table('#uTbl', { id: 'usr', rows: DB.d.users, exportName: 'users', pageSize: 12, toolbar: Auth.can('user.manage') ? `<button class="btn btn-sm btn-primary" data-act="new"><i class="bi bi-person-plus"></i> Add User</button>` : '', onAction: () => Users.dialog(), filters: [{ key: 'lvl', label: 'Level', get: u => ROLES[u.role].level }],
     columns: [{ key: 'id', label: 'User ID' }, { key: 'name', label: 'Name' }, { key: 'email', label: 'Demo login' }, { label: 'Role', value: u => ROLES[u.role].label, render: u => UI.badge('IN_TRANSIT', ROLES[u.role].label) }, { label: 'Level', value: u => ROLES[u.role].level }, { label: 'Data scope', value: scope }, { label: 'Last activity', value: u => { const a = DB.d.audit.filter(x => x.userId === u.id).pop(); return a ? U.fmtDT(a.at) : '—'; } }] });
   const sf = $('#sessForm'); if (sf) sf.onsubmit = e => { e.preventDefault(); const v = +$('#sessMin').value; if (!(v >= 5 && v <= 240)) return UI.toast('Enter 5–240 minutes.', 'error'); Audit.log('Security', 'UPDATE_SESSION_EXPIRY', 'settings', DB.d.settings.sessionMinutes, v); DB.d.settings.sessionMinutes = v; App.commit('Session policy updated.'); };
 };

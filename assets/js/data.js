@@ -6,7 +6,7 @@
 'use strict';
 
 const DB_KEY = 'msdms_db';
-const SEED_VERSION = 7;
+const SEED_VERSION = 8;
 
 const ROLES = {
   STATE_ADMIN:      { label: 'State Super Admin',          level: 'State' },
@@ -20,7 +20,9 @@ const ROLES = {
   DRIVER:           { label: 'Vehicle Driver',             level: 'Transport' },
   PRINCIPAL:        { label: 'School Principal',           level: 'School' },
   EMPLOYEE:         { label: 'School Employee',            level: 'School' },
-  STUDENT:          { label: 'Student / Beneficiary',      level: 'Beneficiary' }
+  STUDENT:          { label: 'Student / Beneficiary',      level: 'Beneficiary' },
+  PURCHASE_OFFICER: { label: 'Admin Employee (Purchase)',  level: 'State' },
+  VENDOR:           { label: 'Vendor',                     level: 'Vendor' }
 };
 
 const SHIP_STATUS = ['CREATED', 'APPROVED', 'READY_FOR_DISPATCH', 'DISPATCHED', 'IN_TRANSIT',
@@ -91,7 +93,7 @@ const Notify = {
   push(event, title, msg, target = {}, at) {
     DB.d.notifications.push({
       id: DB.nextId('NTF'), at: at || U.iso(new Date()), event, title, msg,
-      nodes: target.nodes || [], studentId: target.studentId || null, roles: target.roles || [], readBy: []
+      nodes: target.nodes || [], studentId: target.studentId || null, supplierId: target.supplierId || null, roles: target.roles || [], readBy: []
     });
     if (DB.d.notifications.length > 400) DB.d.notifications.splice(0, DB.d.notifications.length - 400);
   }
@@ -261,6 +263,9 @@ const Seed = {
       { id: 'PRD-02', name: 'Sanitary Pads – XL (Pack of 8)', unit: 'Packet', spec: 'BIS IS 5405 compliant (demo)' }];
     ['Sahyadri Hygiene Products Pvt Ltd', 'Godavari Health Care Industries', 'Konkan Mahila Udyog SHG Federation', 'Deccan Surgicals & Hygiene LLP', 'Vidarbha Care Manufacturing Co.']
       .forEach((n, i) => d.suppliers.push({ id: `SUP-0${i + 1}`, name: `${n} (Demo)`, city: ['Pune', 'Nashik', 'Ratnagiri', 'Satara', 'Nagpur'][i], gstin: `27DEMO${U.pad(i + 1, 4)}X1Z${i}`, contact: person(SF), mobile: mobile(), status: 'ACTIVE' }));
+    /* Vendors are stock sources: each gets a location so that vendor → central warehouse is a tracked shipment order */
+    const VC = { Pune: [18.62, 73.80], Nashik: [19.95, 73.84], Ratnagiri: [16.99, 73.31], Satara: [17.70, 74.05], Nagpur: [21.15, 79.09] };
+    d.suppliers.forEach(s => d.nodes.push({ id: `VN-${s.id}`, type: 'VENDOR', name: s.name, districtId: null, talukaId: null, supplierId: s.id, lat: VC[s.city][0], lng: VC[s.city][1], capacity: 0 }));
     const expOff = [540, 600, 38, 720, 480, 75, 660, 510, -12, 630];
     for (let p = 0; p < 5; p++) {
       const poId = `PO-2026-${U.pad(p + 1, 4)}`, ordered = [60000, 50000, 40000, 44000, 36000][p], date = D(-(170 - p * 28));
@@ -277,8 +282,9 @@ const Seed = {
       }
       d.purchaseOrders.push(po);
     }
-    d.purchaseOrders.push({ id: 'PO-2026-0006', supplierId: 'SUP-01', productId: 'PRD-01', qtyOrdered: 10000, qtyReceived: 0, date: D(-6), status: 'ORDERED', batchIds: [] });
-    d.seq.PO = 6; d.seq.BAT = 10;
+    d.purchaseOrders.push({ id: 'PO-2026-0006', supplierId: 'SUP-01', productId: 'PRD-01', qtyOrdered: 10000, qtyReceived: 0, date: D(-6), status: 'DISPATCHED', acceptedAt: D(-5), expectedDelivery: U.day(D(0)), batchIds: [] });
+    d.purchaseOrders.push({ id: 'PO-2026-0007', supplierId: 'SUP-01', productId: 'PRD-02', qtyOrdered: 8000, qtyReceived: 0, date: D(-1), status: 'ORDERED', batchIds: [] });
+    d.seq.PO = 7; d.seq.BAT = 10;
 
     /* Opening stock – posted through the ledger so balances reconcile */
     const openAt = (() => { const [y, m] = prevM.split('-').map(Number); return U.iso(new Date(y, m - 1, 1, 9, 0)); })();
@@ -349,6 +355,14 @@ const Seed = {
     mkShip('WH-NSK', 'DC-SIN', 900, 'APPROVED', -1, 0); mkShip('DC-SIN', 'SCH-011', 160, 'READY_FOR_DISPATCH', -1, 0);
     mkShip('WH-PUN', 'DC-HAV', 500, 'CANCELLED', -8, 0);
     d.vehicles[3].gpsOnline = false; d.shipments[13].sim.frozen = 0.52; // simulated GPS loss on the delayed vehicle
+    { /* Vendor has dispatched PO-2026-0006: batch awaits quality inspection, shipment order vendor → central warehouse */
+      const po = d.purchaseOrders[5], bid = `BAT-${U.pad(++d.seq.BAT)}`, sid = DB.nextId('SHP'), at = D(-1);
+      d.batches.push({ id: bid, batchNo: 'MH26-R011', productId: po.productId, supplierId: po.supplierId, poId: po.id, mfg: U.day(D(-25)), exp: U.day(D(700)), supplied: 10000, qtyReceived: 0, rejected: 0, approved: 0, qc: 'PENDING', receivedOn: null });
+      po.batchIds.push(bid);
+      d.shipments.push({ id: sid, fromNode: `VN-${po.supplierId}`, toNode: 'WH-CEN', productId: po.productId, batchId: bid, qty: 10000, vehicleId: null, driverId: null, extVehicle: 'MH12-VN-4521 (vendor transport)',
+        createdAt: at, dispatchDate: at, eta: D(0), status: 'DISPATCHED', timeline: [{ status: 'CREATED', at, by: 'Vendor (seed)' }, { status: 'DISPATCHED', at, by: 'Vendor (seed)' }],
+        receivedQty: null, damagedQty: null, shortageQty: null, grnNo: null, challanNo: `DC-${sid.slice(4)}`, sim: null, allocationId: null, requestId: null, poId: po.id, vendorId: po.supplierId });
+    }
 
     /* Demo school SCH-001: small opening stock fully distributed last cycle → closing 0 */
     const s1 = d.students.filter(s => s.schoolId === 'SCH-001' && s.eligibility === 'ELIGIBLE');
@@ -394,7 +408,9 @@ const Seed = {
       { id: 'USR-09', email: 'driver@msdms.demo', role: 'DRIVER', name: d.drivers[0].name + ' (Demo)', driverId: 'DRV-01' },
       { id: 'USR-10', email: 'principal@msdms.demo', role: 'PRINCIPAL', name: d.schools[0].principal + ' (Demo)', districtId: 'PUN', talukaId: 'HAV', schoolId: 'SCH-001' },
       { id: 'USR-11', email: 'employee@msdms.demo', role: 'EMPLOYEE', name: d.employees[0].name + ' (Demo)', districtId: 'PUN', talukaId: 'HAV', schoolId: 'SCH-001', employeeId: 'EMP-001' },
-      { id: 'USR-12', email: 'student@msdms.demo', role: 'STUDENT', name: demoStu.name, schoolId: 'SCH-001', studentId: demoStu.id }];
+      { id: 'USR-12', email: 'student@msdms.demo', role: 'STUDENT', name: demoStu.name, schoolId: 'SCH-001', studentId: demoStu.id },
+      { id: 'USR-13', email: 'purchase@msdms.demo', role: 'PURCHASE_OFFICER', name: 'Neha Sawant (Demo)' },
+      { id: 'USR-14', email: 'vendor@msdms.demo', role: 'VENDOR', name: d.suppliers[0].contact + ' (Demo)', supplierId: 'SUP-01' }];
 
     /* Starter notifications + audit trail */
     Notify.push('VEHICLE_DELAYED', 'Vehicle delayed', `Shipment ${d.shipments[13].id} (MH04-GH-3456) is running behind schedule.`, { nodes: ['WH-MSU', 'DC-AND'] }, D(-1));

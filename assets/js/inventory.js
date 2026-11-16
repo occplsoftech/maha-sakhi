@@ -26,46 +26,51 @@ const Stock = {
 /* ---------- Page: Procurement ---------- */
 let procTab = 'po';
 App.pages.procurement = root => {
-  const d = DB.d, can = Auth.can('proc.manage');
+  const d = DB.d, can = Auth.can('proc.manage'), canPO = Auth.can('po.create'), canVen = Auth.can('vendor.manage');
   const approved = U.sum(d.batches, b => b.approved), rejected = U.sum(d.batches, b => b.rejected);
   root.innerHTML = UI.kpis([
     { label: 'Purchase orders', value: d.purchaseOrders.length, icon: 'cart-check' }, { label: 'Packets ordered', value: U.num(U.sum(d.purchaseOrders, p => p.qtyOrdered)), icon: 'bag', tone: 'blue' },
     { label: 'QC approved (inward)', value: U.num(approved), icon: 'patch-check', tone: 'green' }, { label: 'Rejected in QC', value: U.num(rejected), icon: 'x-octagon', tone: 'red' },
     { label: 'Pending receipt', value: U.num(U.sum(d.purchaseOrders.filter(p => p.status !== 'RECEIVED'), p => p.qtyOrdered - p.qtyReceived)), icon: 'hourglass-split', tone: 'saffron' }], 'kpi-5') +
-    UI.tabs('ptabs', [{ key: 'po', label: 'Purchase Orders', icon: 'cart-check', count: d.purchaseOrders.length }, { key: 'batch', label: 'Batches & Quality Inspection', icon: 'upc-scan', count: d.batches.length }, { key: 'sup', label: 'Suppliers', icon: 'buildings', count: d.suppliers.length }], procTab) + `<div class="panel"><div class="panel-b" id="pBody"></div></div>`;
+    UI.tabs('ptabs', [{ key: 'po', label: 'Purchase Orders', icon: 'cart-check', count: d.purchaseOrders.length }, { key: 'batch', label: 'Batches & Quality Inspection', icon: 'upc-scan', count: d.batches.length }, { key: 'sup', label: 'Vendors', icon: 'shop', count: d.suppliers.length }], procTab) + `<div class="panel"><div class="panel-b" id="pBody"></div></div>`;
   UI.onTabs('ptabs', k => { procTab = k; App.refresh(); });
   if (procTab === 'po') {
     UI.table('#pBody', {
       id: 'po', rows: d.purchaseOrders.slice().reverse(), exportName: 'purchase-orders', filters: [{ key: 'status', label: 'Status' }, { key: 'sup', label: 'Supplier', get: p => DB.name('suppliers', p.supplierId) }],
-      toolbar: can ? `<button class="btn btn-sm btn-primary" data-act="new"><i class="bi bi-plus-lg"></i> New Purchase Order</button>` : '',
+      toolbar: canPO ? `<button class="btn btn-sm btn-primary" data-act="new"><i class="bi bi-plus-lg"></i> New Purchase Order</button>` : '',
       columns: [{ key: 'id', label: 'PO Number', render: p => `<strong>${p.id}</strong>` }, { label: 'Supplier', value: p => DB.name('suppliers', p.supplierId) }, { label: 'Product', value: p => DB.name('products', p.productId) }, { label: 'Purchase Date', value: p => p.date, render: p => U.fmtDate(p.date) },
         { key: 'qtyOrdered', label: 'Ordered', cls: 'text-end', render: p => U.num(p.qtyOrdered) }, { key: 'qtyReceived', label: 'Received', cls: 'text-end', render: p => U.num(p.qtyReceived) },
         { label: 'Batches', value: p => p.batchIds.map(b => DB.get('batches', b).batchNo).join(', ') || '—' }, { key: 'status', label: 'Status', render: p => UI.badge(p.status) },
-        { label: '', sort: false, noExport: true, render: p => can && p.status !== 'RECEIVED' ? UI.actBtn('recv', 'box-arrow-in-down', 'Receive & QC', 'primary') : '' }],
+        { label: '', sort: false, noExport: true, render: p => can && p.status === 'DISPATCHED' ? UI.actBtn('recv', 'box-arrow-in-down', 'Receive & QC', 'primary') : p.status === 'ORDERED' ? '<span class="sub">Awaiting vendor acceptance</span>' : p.status === 'ACCEPTED' || p.status === 'PARTIAL' ? '<span class="sub">Vendor to dispatch</span>' : p.status === 'DISPATCHED' ? '<span class="sub">In transit to warehouse</span>' : '' }],
       onAction: (act, id) => {
         if (act === 'new') return UI.modal({
           title: 'New purchase order', size: 'lg', body: UI.fields([{ name: 'supplierId', label: 'Supplier', type: 'select', required: true, options: d.suppliers.filter(s => s.status === 'ACTIVE').map(s => ({ v: s.id, l: s.name })) }, { name: 'productId', label: 'Product', type: 'select', required: true, options: d.products.map(p => ({ v: p.id, l: p.name })) }, { name: 'qtyOrdered', label: 'Quantity ordered (packets)', type: 'number', required: true, min: 100, step: 1 }, { name: 'date', label: 'Purchase date', type: 'date', required: true, value: U.day(new Date()), max: U.day(new Date()) }]),
-          onSubmit: f => { const po = { id: `PO-${new Date().getFullYear()}-${U.pad(++d.seq.PO, 4)}`, ...f, date: U.iso(new Date(f.date)), qtyReceived: 0, status: 'ORDERED', batchIds: [] }; d.purchaseOrders.push(po); Audit.log('Procurement', 'CREATE_PO', po.id, '', `${U.num(f.qtyOrdered)} packets`); App.commit(`${po.id} created.`); }
+          onSubmit: f => { const po = { id: `PO-${new Date().getFullYear()}-${U.pad(++d.seq.PO, 4)}`, ...f, date: U.iso(new Date(f.date)), qtyReceived: 0, status: 'ORDERED', batchIds: [] }; d.purchaseOrders.push(po); Audit.log('Procurement', 'CREATE_PO', po.id, '', `${U.num(f.qtyOrdered)} packets`); Notify.push('PO_CREATED', 'New purchase order', `${po.id}: ${U.num(f.qtyOrdered)} packets of ${DB.name('products', f.productId)} ordered. Please accept and dispatch.`, { supplierId: f.supplierId }); App.commit(`${po.id} created.`); }
         });
-        const po = DB.get('purchaseOrders', id), rem = po.qtyOrdered - po.qtyReceived;
+        const po = DB.get('purchaseOrders', id), rem = po.qtyOrdered - po.qtyReceived, pb = d.batches.find(b => b.poId === po.id && b.qc === 'PENDING'), sh = d.shipments.find(s => s.poId === po.id && s.status === 'DISPATCHED');
+        if (!pb) return UI.toast('The vendor has not dispatched this order yet.', 'warning');
         UI.modal({
           title: `Receive stock & quality inspection · ${po.id}`, size: 'lg', submit: 'Post stock inward', submitIcon: 'box-arrow-in-down', tone: 'success',
-          body: UI.kv([['Supplier', esc(DB.name('suppliers', po.supplierId))], ['Product', esc(DB.name('products', po.productId))], ['Ordered', U.num(po.qtyOrdered)], ['Pending receipt', U.num(rem)]]) + '<hr>' + UI.fields([
-            { name: 'batchNo', label: 'Batch number', required: true, value: `MH26-R${U.pad(d.seq.BAT + 1, 3)}`, pattern: '[A-Z0-9-]{4,16}' },
-            { name: 'qtyReceived', label: 'Quantity received (packets)', type: 'number', required: true, min: 1, max: rem, step: 1, value: rem },
-            { name: 'mfg', label: 'Manufacturing date', type: 'date', required: true, value: U.day(U.addDays(new Date(), -30)), max: U.day(new Date()) },
-            { name: 'exp', label: 'Expiry date', type: 'date', required: true, value: U.day(U.addDays(new Date(), 700)), min: U.day(U.addDays(new Date(), 1)) },
+          body: UI.kv([['Supplier', esc(DB.name('suppliers', po.supplierId))], ['Product', esc(DB.name('products', po.productId))], ['Ordered', U.num(po.qtyOrdered)], ['Pending receipt', U.num(rem)], ['Supplied by vendor', U.num(pb.supplied)], ['Vendor shipment order', sh ? sh.id : '—']]) + '<hr>' + UI.fields([
+            { name: 'batchNo', label: 'Batch number (from vendor)', required: true, value: pb.batchNo, readonly: true },
+            { name: 'qtyReceived', label: 'Quantity received (packets)', type: 'number', required: true, min: 1, max: pb.supplied, step: 1, value: pb.supplied },
+            { name: 'mfg', label: 'Manufacturing date', type: 'date', required: true, value: pb.mfg, readonly: true },
+            { name: 'exp', label: 'Expiry date', type: 'date', required: true, value: pb.exp, readonly: true },
             { name: 'rejected', label: 'Rejected quantity (QC)', type: 'number', required: true, min: 0, step: 1, value: 0 },
             { name: 'qc', label: 'Quality inspection result', type: 'select', required: true, options: ['PASSED', 'FAILED'], value: 'PASSED' },
             { name: 'remark', label: 'Inspection remarks', type: 'textarea', col: 12, value: 'Sampling as per demo QC protocol; packaging and absorbency checks satisfactory.' }]) +
             `<div class="steps-note mt-3"><i class="bi bi-info-circle"></i> Approved quantity = received − rejected. Approved stock is posted to <strong>${esc(DB.nodeName('WH-CEN'))}</strong> with a unique transaction ID.</div>`,
           onSubmit: f => {
             if (f.rejected > f.qtyReceived) throw new Error('Rejected quantity cannot exceed received quantity.');
-            if (d.batches.some(b => b.batchNo === f.batchNo)) throw new Error('Batch number already exists.');
-            if (new Date(f.exp) <= new Date(f.mfg)) throw new Error('Expiry date must be after manufacturing date.');
             const approvedQty = f.qc === 'FAILED' ? 0 : f.qtyReceived - f.rejected;
-            const bat = { id: `BAT-${U.pad(++d.seq.BAT)}`, batchNo: f.batchNo, productId: po.productId, supplierId: po.supplierId, poId: po.id, mfg: f.mfg, exp: f.exp, qtyReceived: f.qtyReceived, rejected: f.qtyReceived - approvedQty, approved: approvedQty, qc: f.qc, receivedOn: U.iso(new Date()), remark: f.remark };
-            d.batches.push(bat); po.batchIds.push(bat.id); po.qtyReceived += f.qtyReceived; po.status = po.qtyReceived >= po.qtyOrdered ? 'RECEIVED' : 'PARTIAL';
+            const bat = pb; Object.assign(bat, { qtyReceived: f.qtyReceived, rejected: f.qtyReceived - approvedQty, approved: approvedQty, qc: f.qc, receivedOn: U.iso(new Date()), remark: f.remark });
+            po.qtyReceived += f.qtyReceived; po.status = po.qtyReceived >= po.qtyOrdered ? 'RECEIVED' : 'PARTIAL';
+            if (sh) { // close the vendor's shipment order with a goods receipt
+              const short = bat.supplied - f.qtyReceived, grn = { id: DB.nextId('GRN'), shipmentId: sh.id, nodeId: 'WH-CEN', at: U.iso(new Date()), dispatched: bat.supplied, received: approvedQty, damaged: bat.rejected, shortage: short, receivedBy: DB.actor.name, ack: DB.actor.name, proof: 'Quality inspection record', remark: f.remark, status: 'CONFIRMED' };
+              d.grns.push(grn); sh.grnNo = grn.id; sh.receivedQty = approvedQty; sh.damagedQty = bat.rejected; sh.shortageQty = short;
+              Ship.step(sh, bat.rejected || short ? 'PARTIALLY_RECEIVED' : 'RECEIVED', `${grn.id} after quality inspection`);
+            }
+            Notify.push('PO_RECEIVED', 'Order received at warehouse', `${po.id}: ${U.num(approvedQty)} packets approved, ${U.num(bat.rejected)} rejected in quality inspection.`, { supplierId: po.supplierId });
             let txn = null; if (approvedQty > 0) txn = Inv.post({ nodeId: 'WH-CEN', batchId: bat.id, qty: approvedQty, type: 'INWARD', ref: po.id, note: `Procurement inward · batch ${bat.batchNo}` });
             Audit.log('Procurement', 'STOCK_INWARD', po.id, `Received ${f.qtyReceived}`, `Approved ${approvedQty}, rejected ${bat.rejected}`, `QC ${f.qc}`);
             Notify.push('STOCK_RECEIVED', 'New stock received', `${U.num(approvedQty)} packets (batch ${bat.batchNo}) inward at Central Warehouse against ${po.id}.`, { nodes: ['WH-CEN'] });
@@ -84,13 +89,14 @@ App.pages.procurement = root => {
         { label: 'In network', value: b => net(b.id), cls: 'text-end', render: b => U.num(net(b.id)) }, { key: 'qc', label: 'QC', render: b => UI.badge(b.qc) }]
     });
   } else {
-    const form = s => UI.fields([{ name: 'name', label: 'Supplier name', required: true }, { name: 'city', label: 'City', required: true }, { name: 'gstin', label: 'GSTIN (fictional)', required: true, pattern: '[0-9A-Z]{15}', error: '15-character GSTIN' }, { name: 'contact', label: 'Contact person', required: true }, { name: 'mobile', label: 'Mobile', required: true, pattern: '[0-9]{10}', error: '10-digit mobile number' }, { name: 'status', label: 'Status', type: 'select', required: true, options: ['ACTIVE', 'INACTIVE'] }], s || { status: 'ACTIVE' });
+    const form = s => UI.fields([{ name: 'name', label: 'Vendor name', required: true }, { name: 'city', label: 'City', required: true }, { name: 'gstin', label: 'GSTIN (fictional)', required: true, pattern: '[0-9A-Z]{15}', error: '15-character GSTIN' }, { name: 'contact', label: 'Contact person', required: true }, { name: 'mobile', label: 'Mobile', required: true, pattern: '[0-9]{10}', error: '10-digit mobile number' }, { name: 'status', label: 'Status', type: 'select', required: true, options: ['ACTIVE', 'INACTIVE'] }, ...(s ? [] : [{ name: 'loginEmail', label: 'Vendor login e-mail', type: 'email', required: true, col: 12, help: 'Creates the vendor login (demo password applies).' }])], s || { status: 'ACTIVE' });
     UI.table('#pBody', {
       id: 'sup', rows: d.suppliers, exportName: 'suppliers', filters: [{ key: 'status', label: 'Status' }],
-      toolbar: can ? `<button class="btn btn-sm btn-primary" data-act="new"><i class="bi bi-plus-lg"></i> Add Supplier</button>` : '',
-      columns: [{ key: 'id', label: 'Supplier ID' }, { key: 'name', label: 'Name', render: s => `<strong>${esc(s.name)}</strong>` }, { key: 'city', label: 'City' }, { key: 'gstin', label: 'GSTIN (fictional)' }, { key: 'contact', label: 'Contact' }, { key: 'mobile', label: 'Mobile' },
-        { label: 'POs', value: s => d.purchaseOrders.filter(p => p.supplierId === s.id).length, cls: 'text-end' }, { key: 'status', label: 'Status', render: s => UI.badge(s.status) }, { label: '', sort: false, noExport: true, render: () => can ? UI.actBtn('edit', 'pencil', 'Edit') : '' }],
-      onAction: (act, id) => { const s = act === 'edit' ? DB.get('suppliers', id) : null; UI.modal({ title: s ? 'Edit supplier' : 'Add supplier', size: 'lg', body: form(s), onSubmit: f => { if (s) { Object.assign(s, f); Audit.log('Procurement', 'UPDATE_SUPPLIER', s.id); } else { const nid = `SUP-${U.pad(d.suppliers.length + 1)}`; d.suppliers.push({ id: nid, ...f }); Audit.log('Procurement', 'CREATE_SUPPLIER', nid, '', f.name); } App.commit('Supplier saved.'); } }); }
+      toolbar: canVen ? `<button class="btn btn-sm btn-primary" data-act="new"><i class="bi bi-plus-lg"></i> Add Vendor</button>` : '',
+      columns: [{ key: 'id', label: 'Vendor ID' }, { key: 'name', label: 'Name', render: s => `<strong>${esc(s.name)}</strong>` }, { key: 'city', label: 'City' }, { key: 'gstin', label: 'GSTIN (fictional)' }, { key: 'contact', label: 'Contact' }, { key: 'mobile', label: 'Mobile' },
+        { label: 'Vendor login', value: s => (d.users.find(u => u.supplierId === s.id) || {}).email || '—' },
+        { label: 'POs', value: s => d.purchaseOrders.filter(p => p.supplierId === s.id).length, cls: 'text-end' }, { key: 'status', label: 'Status', render: s => UI.badge(s.status) }, { label: '', sort: false, noExport: true, render: () => canVen ? UI.actBtn('edit', 'pencil', 'Edit') : '' }],
+      onAction: (act, id) => { const s = act === 'edit' ? DB.get('suppliers', id) : null; UI.modal({ title: s ? 'Edit vendor' : 'Add vendor', size: 'lg', body: form(s), onSubmit: f => { if (s) { Object.assign(s, f); Audit.log('Procurement', 'UPDATE_SUPPLIER', s.id); } else { const nid = `SUP-${U.pad(d.suppliers.length + 1)}`; Users.create({ name: `${f.contact} (${f.name})`, email: f.loginEmail, role: 'VENDOR', supplierId: nid }); d.suppliers.push({ id: nid, ...f }); d.nodes.push({ id: `VN-${nid}`, type: 'VENDOR', name: f.name, districtId: null, talukaId: null, supplierId: nid, lat: 18.52, lng: 73.86, capacity: 0 }); Audit.log('Procurement', 'CREATE_VENDOR', nid, '', f.name); } App.commit('Vendor saved.'); } }); }
     });
   }
 };
@@ -170,4 +176,71 @@ App.pages.inventory = root => {
         { key: 'balance', label: 'Balance', cls: 'text-end', render: tx => U.num(tx.balance) }, { key: 'ref', label: 'Reference' }, { key: 'note', label: 'Remarks' }, { key: 'user', label: 'User' }]
     });
   }
+};
+
+/* ---------- Page: Vendor portal ----------
+   A vendor signs in, sees only its own purchase orders, accepts them and provides the order.
+   Providing an order creates the batch (awaiting quality inspection) and a shipment order vendor → central warehouse. */
+let venTab = 'orders';
+App.pages['vendor-portal'] = root => {
+  const d = DB.d, u = Auth.user(), sup = DB.get('suppliers', u.supplierId);
+  const pos = d.purchaseOrders.filter(p => p.supplierId === sup.id).slice().reverse(), ships = d.shipments.filter(s => s.vendorId === sup.id).slice().reverse();
+  const cnt = st => pos.filter(p => st.includes(p.status)).length;
+  const pending = po => U.sum(d.batches.filter(b => b.poId === po.id && b.qc === 'PENDING'), b => b.supplied);
+  const remaining = po => po.qtyOrdered - po.qtyReceived - pending(po);
+  root.innerHTML = UI.kpis([{ label: 'New orders to accept', value: cnt(['ORDERED']), icon: 'envelope-exclamation', tone: 'saffron' }, { label: 'Accepted, to be dispatched', value: cnt(['ACCEPTED', 'PARTIAL']), icon: 'box-seam', tone: 'blue' },
+    { label: 'Dispatched, awaiting receipt', value: cnt(['DISPATCHED']), icon: 'truck', tone: 'blue' }, { label: 'Completed orders', value: cnt(['RECEIVED']), icon: 'check-circle', tone: 'green' }], 'kpi-4') +
+    `<div class="chain"><span><i class="bi bi-cart-check"></i> Purchase order</span><i class="bi bi-arrow-right"></i><span><i class="bi bi-hand-thumbs-up"></i> Vendor accepts</span><i class="bi bi-arrow-right"></i><span><i class="bi bi-send"></i> Vendor provides: shipment order</span><i class="bi bi-arrow-right"></i><span><i class="bi bi-patch-check"></i> Warehouse quality check and receipt</span></div>` +
+    UI.tabs('vtab', [{ key: 'orders', label: 'Purchase orders', icon: 'cart-check', count: pos.length }, { key: 'ships', label: 'My shipment orders', icon: 'truck', count: ships.length }], venTab) + `<div class="panel"><div class="panel-b" id="vBody"></div></div>`;
+  UI.onTabs('vtab', k => { venTab = k; App.refresh(); });
+  if (venTab === 'ships') return UI.table('#vBody', {
+    id: 'vship', rows: ships, exportName: 'vendor-shipments', empty: 'No shipment orders yet. Provide an accepted order to create one.',
+    columns: [{ key: 'id', label: 'Shipment order', render: s => `<strong>${s.id}</strong>` }, { key: 'poId', label: 'Purchase order' }, { label: 'Batch', value: s => DB.get('batches', s.batchId).batchNo }, { key: 'qty', label: 'Quantity', cls: 'text-end', render: s => U.num(s.qty) },
+      { key: 'extVehicle', label: 'Vehicle' }, { label: 'Dispatched', value: s => s.dispatchDate, render: s => U.fmtDT(s.dispatchDate) }, { label: 'Received', value: s => s.receivedQty ?? '', render: s => s.receivedQty == null ? '—' : U.num(s.receivedQty) }, { key: 'status', label: 'Status', render: s => UI.badge(s.status) },
+      { label: '', sort: false, noExport: true, render: () => `<div class="acts">${UI.actBtn('challan', 'file-earmark-text', 'Challan', 'outline-primary')}${UI.actBtn('view', 'eye', 'View', 'outline-secondary')}</div>` }],
+    onAction: (act, id) => act === 'challan' ? Ship.challan(Ship.get(id)) : ShipUI.detail(Ship.get(id))
+  });
+  UI.table('#vBody', {
+    id: 'vpo', rows: pos, exportName: 'vendor-orders', filters: [{ key: 'status', label: 'Status' }], empty: 'No purchase orders for you yet.',
+    columns: [{ key: 'id', label: 'PO Number', render: p => `<strong>${p.id}</strong>` }, { label: 'Product', value: p => DB.name('products', p.productId) }, { label: 'Order date', value: p => p.date, render: p => U.fmtDate(p.date) },
+      { key: 'qtyOrdered', label: 'Ordered', cls: 'text-end', render: p => U.num(p.qtyOrdered) }, { label: 'Dispatched (awaiting receipt)', value: p => pending(p), cls: 'text-end', render: p => U.num(pending(p)) },
+      { key: 'qtyReceived', label: 'Received by warehouse', cls: 'text-end', render: p => U.num(p.qtyReceived) }, { key: 'status', label: 'Status', render: p => UI.badge(p.status) },
+      { label: 'Action', sort: false, noExport: true, render: p => p.status === 'ORDERED' ? UI.actBtn('accept', 'hand-thumbs-up', 'Accept order', 'primary') : ['ACCEPTED', 'PARTIAL'].includes(p.status) && remaining(p) > 0 ? UI.actBtn('provide', 'send', 'Provide order', 'success') : '' }],
+    onAction: (act, id) => {
+      const po = DB.get('purchaseOrders', id);
+      if (act === 'accept') return UI.modal({
+        title: `Accept ${po.id}`, submit: 'Accept order', submitIcon: 'hand-thumbs-up',
+        body: UI.kv([['Product', esc(DB.name('products', po.productId))], ['Quantity ordered', U.num(po.qtyOrdered)], ['Order date', U.fmtDate(po.date)]]) + '<hr>' + UI.fields([
+          { name: 'expectedDelivery', label: 'Expected delivery date', type: 'date', required: true, min: U.day(new Date()), value: U.day(U.addDays(new Date(), 5)) },
+          { name: 'ok', label: 'We confirm the product, quantity and delivery to the State Central Warehouse.', type: 'checkbox', required: true, col: 12 }]),
+        onSubmit: f => { po.status = 'ACCEPTED'; po.acceptedAt = U.iso(new Date()); po.expectedDelivery = f.expectedDelivery; Audit.log('Vendor Portal', 'ACCEPT_PO', po.id, 'ORDERED', 'ACCEPTED', `Delivery by ${f.expectedDelivery}`); Notify.push('PO_ACCEPTED', 'Purchase order accepted', `${sup.name} accepted ${po.id}; delivery expected by ${U.fmtDate(f.expectedDelivery)}.`, { supplierId: sup.id }); App.commit(`${po.id} accepted.`); }
+      });
+      const rem = remaining(po);
+      UI.modal({
+        title: `Provide order · ${po.id}`, size: 'lg', submit: 'Dispatch and create shipment order', submitIcon: 'send', tone: 'success',
+        body: UI.kv([['Product', esc(DB.name('products', po.productId))], ['Ordered', U.num(po.qtyOrdered)], ['Still to supply', U.num(rem)], ['Deliver to', esc(DB.nodeName('WH-CEN'))]]) + '<hr>' + UI.fields([
+          { name: 'batchNo', label: 'Batch number', required: true, pattern: '[A-Z0-9-]{4,16}', value: `MH26-V${U.pad(d.seq.BAT + 1, 3)}`, error: '4–16 capital letters, digits or hyphens' },
+          { name: 'qty', label: 'Quantity supplied (packets)', type: 'number', required: true, min: 1, max: rem, step: 1, value: rem },
+          { name: 'mfg', label: 'Manufacturing date', type: 'date', required: true, max: U.day(new Date()), value: U.day(U.addDays(new Date(), -20)) },
+          { name: 'exp', label: 'Expiry date', type: 'date', required: true, min: U.day(U.addDays(new Date(), 30)), value: U.day(U.addDays(new Date(), 710)) },
+          { name: 'vehicle', label: 'Vehicle number', required: true, pattern: '[A-Z]{2}[0-9]{2}-[A-Z]{1,2}-[0-9]{4}', placeholder: 'MH12-VN-4521', error: 'Format: MH12-AB-1234' },
+          { name: 'driver', label: 'Driver name and mobile', required: true, placeholder: 'Name, 10-digit mobile' }]) +
+          '<div class="steps-note mt-3"><i class="bi bi-info-circle"></i> This creates a shipment order from you to the State Central Warehouse. Stock is added to the warehouse only after its quality inspection and goods receipt.</div>',
+        onSubmit: f => {
+          if (d.batches.some(b => b.batchNo === f.batchNo)) throw new Error('Batch number already exists.');
+          if (new Date(f.exp) <= new Date(f.mfg)) throw new Error('Expiry date must be after manufacturing date.');
+          const bid = `BAT-${U.pad(++d.seq.BAT)}`, sid = DB.nextId('SHP'), at = U.iso(new Date());
+          d.batches.push({ id: bid, batchNo: f.batchNo, productId: po.productId, supplierId: sup.id, poId: po.id, mfg: f.mfg, exp: f.exp, supplied: f.qty, qtyReceived: 0, rejected: 0, approved: 0, qc: 'PENDING', receivedOn: null });
+          po.batchIds.push(bid); po.status = 'DISPATCHED';
+          const s = { id: sid, fromNode: `VN-${sup.id}`, toNode: 'WH-CEN', productId: po.productId, batchId: bid, qty: f.qty, vehicleId: null, driverId: null, extVehicle: `${f.vehicle} (${f.driver})`, createdAt: at, dispatchDate: at,
+            eta: po.expectedDelivery ? U.iso(new Date(po.expectedDelivery)) : U.iso(U.addDays(new Date(), 2)), status: 'DISPATCHED', timeline: [{ status: 'CREATED', at, by: u.name }, { status: 'DISPATCHED', at, by: u.name, note: `Challan DC-${sid.slice(4)}` }],
+            receivedQty: null, damagedQty: null, shortageQty: null, grnNo: null, challanNo: `DC-${sid.slice(4)}`, sim: null, allocationId: null, requestId: null, poId: po.id, vendorId: sup.id };
+          d.shipments.push(s);
+          Audit.log('Vendor Portal', 'PROVIDE_ORDER', po.id, 'ACCEPTED', 'DISPATCHED', `${U.num(f.qty)} packets · batch ${f.batchNo} · ${sid}`);
+          Notify.push('DISPATCH_CREATED', 'Vendor dispatched an order', `${sid}: ${U.num(f.qty)} packets (batch ${f.batchNo}) from ${sup.name} against ${po.id}. Quality inspection pending on arrival.`, { nodes: ['WH-CEN'], supplierId: sup.id });
+          App.commit(`Shipment order ${sid} created for ${po.id}.`); setTimeout(() => Ship.challan(s), 450);
+        }
+      });
+    }
+  });
 };

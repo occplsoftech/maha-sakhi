@@ -288,6 +288,7 @@ const ShipUI = {
     });
   },
   next(s) { // primary workflow action available to the current user
+    if (s.poId) return s.status === 'DISPATCHED' && Auth.can('proc.manage') ? ['qc', 'box-arrow-in-down', 'Receive & QC'] : null; // vendor shipment: closed by quality inspection
     const m = Ship.canManage(s), tr = Ship.canTransport(s);
     if (s.status === 'CREATED' && m) return ['approve', 'check2-circle', 'Approve'];
     if (s.status === 'APPROVED' && tr && !s.vehicleId) return ['assign', 'truck', 'Assign vehicle'];
@@ -301,6 +302,7 @@ const ShipUI = {
   },
   act(act, s) {
     try {
+      if (act === 'qc') return location.href = 'procurement.html';
       if (act === 'approve') Ship.approve(s); else if (act === 'ready') Ship.ready(s); else if (act === 'dispatch') Ship.dispatch(s); else if (act === 'start') Ship.start(s); else if (act === 'ff') Ship.arrive(s);
       else if (act === 'assign') return this.assignDialog(s);
       else if (act === 'receive') return this.receiveDialog(s);
@@ -367,7 +369,7 @@ App.pages.shipments = root => {
       { key: 'id', label: 'Shipment ID', render: s => `<a href="#" data-act="view" data-id="${s.id}"><strong>${s.id}</strong></a>` },
       { label: 'Source → Destination', value: s => `${DB.nodeName(s.fromNode)} → ${DB.nodeName(s.toNode)}`, render: s => `${esc(DB.nodeName(s.fromNode))}<div class="sub"><i class="bi bi-arrow-return-right"></i> ${esc(DB.nodeName(s.toNode))}</div>` },
       { label: 'Batch', value: s => DB.get('batches', s.batchId).batchNo }, { key: 'qty', label: 'Qty', render: s => U.num(s.qty), cls: 'text-end' },
-      { label: 'Vehicle / Driver', value: s => s.vehicleId ? `${DB.get('vehicles', s.vehicleId).regNo} ${DB.name('drivers', s.driverId)}` : 'Unassigned', render: s => s.vehicleId ? `${DB.get('vehicles', s.vehicleId).regNo}<div class="sub">${esc(DB.name('drivers', s.driverId))}</div>` : '<span class="text-muted">Unassigned</span>' },
+      { label: 'Vehicle / Driver', value: s => s.vehicleId ? `${DB.get('vehicles', s.vehicleId).regNo} ${DB.name('drivers', s.driverId)}` : (s.extVehicle || 'Unassigned'), render: s => s.vehicleId ? `${DB.get('vehicles', s.vehicleId).regNo}<div class="sub">${esc(DB.name('drivers', s.driverId))}</div>` : `<span class="text-muted">${esc(s.extVehicle || 'Unassigned')}</span>` },
       { label: 'Dispatch', value: s => s.dispatchDate || '', render: s => U.fmtDT(s.dispatchDate) }, { label: 'Expected', value: s => s.eta, render: s => U.fmtDT(s.eta) },
       { key: 'status', label: 'Status', render: s => UI.badge(s.status) + (['IN_TRANSIT', 'DELAYED'].includes(s.status) ? `<div class="mini-prog"><i style="width:${Math.round(Ship.progress(s) * 100)}%"></i></div>` : '') },
       { label: 'Actions', sort: false, noExport: true, render: s => { const n = ShipUI.next(s); return `<div class="acts">${n ? UI.actBtn(n[0], n[1], n[2], 'primary') : ''}${UI.actBtn('view', 'eye', 'View', 'outline-secondary')}${Ship.canManage(s) && ['CREATED', 'APPROVED', 'READY_FOR_DISPATCH'].includes(s.status) ? UI.actBtn('cancel', 'x-lg', 'Cancel', 'outline-danger') : ''}${s.status === 'IN_TRANSIT' && Ship.canTransport(s) ? UI.actBtn('delay', 'clock', 'Delay', 'outline-warning') : ''}</div>`; } }],
@@ -437,7 +439,7 @@ App.pages.tracking = root => {
     <div class="track-layout"><div class="panel track-map"><div id="map"></div></div>
     <div class="track-side"><div class="panel"><header class="panel-h"><h2><i class="bi bi-truck"></i> Active vehicles</h2><span class="live-dot">LIVE · simulated</span></header><div class="panel-b p-0" id="trkList"></div></div><div class="panel" id="trkDetail"></div></div></div>`;
   const map = MapKit.create('map'), layers = {};
-  DB.d.nodes.filter(n => n.type !== 'SCHOOL' && Scope.nodeIds().concat(['WH-CEN']).includes(n.id) || Auth.is('DRIVER')).filter(n => n.type !== 'SCHOOL').forEach(n => L.marker([n.lat, n.lng], { icon: MapKit.icon('pin-' + n.type.toLowerCase(), n.type === 'CENTRAL' ? 'bank' : n.type === 'DISTRICT' ? 'house-gear' : 'box-seam') }).addTo(map).bindPopup(`<strong>${esc(n.name)}</strong><br>Stock: ${U.num(Inv.total(n.id))} packets`));
+  DB.d.nodes.filter(n => n.type !== 'SCHOOL' && Scope.nodeIds().concat(['WH-CEN']).includes(n.id) || Auth.is('DRIVER')).filter(n => !['SCHOOL', 'VENDOR'].includes(n.type)).forEach(n => L.marker([n.lat, n.lng], { icon: MapKit.icon('pin-' + n.type.toLowerCase(), n.type === 'CENTRAL' ? 'bank' : n.type === 'DISTRICT' ? 'house-gear' : 'box-seam') }).addTo(map).bindPopup(`<strong>${esc(n.name)}</strong><br>Stock: ${U.num(Inv.total(n.id))} packets`));
   const drawSide = () => {
     const ss = list(); if (!trkSel || !ss.some(s => s.id === trkSel)) trkSel = ss[0] ? ss[0].id : null;
     $('#trkList').innerHTML = ss.length ? ss.map(s => { const v = DB.get('vehicles', s.vehicleId), p = Ship.position(s); return `<button class="trk-row ${s.id === trkSel ? 'sel' : ''}" data-s="${s.id}"><div><strong>${v.regNo}</strong> ${UI.badge(s.status)} ${p.online ? '' : UI.badge('OFFLINE', 'GPS offline')}</div><div class="sub">${s.id} · ${esc(DB.name('drivers', s.driverId))}</div><div class="sub">${esc(DB.nodeName(s.fromNode))} → ${esc(DB.nodeName(s.toNode))}</div><div class="mini-prog lg"><i style="width:${Math.round(p.progress * 100)}%"></i></div></button>`; }).join('') : UI.empty('No vehicles on the road. Dispatch a shipment and start the trip.', 'truck');

@@ -36,6 +36,8 @@ Maharashtra outline is drawn when tiles are unavailable).
 | School Principal | principal@msdms.demo | SCH-001 |
 | School Employee | employee@msdms.demo | SCH-001 |
 | Student / Beneficiary | student@msdms.demo | Own record |
+| Admin Employee (Purchase) | purchase@msdms.demo | Purchase orders and vendors |
+| Vendor | vendor@msdms.demo | Own purchase orders only |
 
 The header has a **Demo Guide** (the 24-step end-to-end scenario with one-click role switching),
 a quick role switcher in the user menu, an EN / मराठी toggle and **Reset demo data**.
@@ -78,8 +80,10 @@ docs/screenshots/          captures of every screen
 
 ## What works
 
-- Role-based navigation and permissions for 12 roles; district / taluka / school data isolation
+- Role-based navigation and permissions for 14 roles; district / taluka / school data isolation
 - CRUD for masters, schools, employees, suppliers, vehicles, drivers, students, policy rules
+- Admin creates users; officers create schools (with latitude / longitude and a Principal login); principals create school users and students
+- Vendor portal: the admin employee places a purchase order, the vendor accepts it and provides it with a shipment order to the central warehouse
 - Procurement with QC → stock inward; batch-wise independent stock per location; unique
   transaction IDs; negative stock is rejected; adjustments, damage, expiry write-off, reconciliation
 - Shipment lifecycle `CREATED → APPROVED → READY_FOR_DISPATCH → DISPATCHED → IN_TRANSIT →

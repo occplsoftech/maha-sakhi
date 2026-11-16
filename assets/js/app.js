@@ -14,7 +14,7 @@ const PALETTE = ['#4338ca', '#d61f45', '#0e9f8e', '#c77700', '#0284c7'];
 
 const STATUS_CLS = {
   ACTIVE: 'ok', ELIGIBLE: 'ok', RECEIVED: 'ok', APPROVED: 'ok', PASSED: 'ok', AVAILABLE: 'ok', ACKNOWLEDGED: 'ok', CONFIRMED: 'ok', VERIFIED_SIMULATED: 'ok', ONLINE: 'ok', CLOSED: 'ok', RESOLVED: 'ok',
-  CREATED: 'muted', DRAFT: 'muted', ORDERED: 'info', GENERATED: 'info', READY_FOR_DISPATCH: 'info', DISPATCHED: 'info', IN_TRANSIT: 'info', ON_TRIP: 'info', REACHED_DESTINATION: 'warn',
+  CREATED: 'muted', DRAFT: 'muted', ORDERED: 'info', ACCEPTED: 'info', GENERATED: 'info', READY_FOR_DISPATCH: 'info', DISPATCHED: 'info', IN_TRANSIT: 'info', ON_TRIP: 'info', REACHED_DESTINATION: 'warn',
   PENDING: 'warn', PENDING_VERIFICATION: 'warn', PENDING_TALUKA: 'warn', PENDING_DISTRICT: 'warn', PENDING_STATE: 'warn', PENDING_CONFIRMATION: 'warn', PARTIALLY_RECEIVED: 'warn', PARTIAL: 'warn', MAINTENANCE: 'warn', SUBMITTED_TO_TALUKA: 'warn', OPEN: 'warn', TRANSFERRED: 'muted',
   DELAYED: 'bad', CANCELLED: 'bad', REJECTED: 'bad', NOT_ELIGIBLE: 'bad', INACTIVE: 'bad', OFFLINE: 'bad', EXPIRED: 'bad', FAILED: 'bad'
 };
@@ -215,7 +215,7 @@ const App = {
   },
   shell(page) {
     const u = Auth.user(), role = ROLES[u.role], navItem = NAV.flatMap(g => g.items).find(i => i.page === page), phIcon = navItem ? navItem.icon : 'grid';
-    const scopeTxt = u.schoolId ? DB.name('schools', u.schoolId) : u.talukaId ? `${DB.name('talukas', u.talukaId)} Taluka` : u.districtId ? `${DB.name('districts', u.districtId)} District` : u.nodeId ? DB.nodeName(u.nodeId) : 'Maharashtra State';
+    const scopeTxt = u.supplierId ? DB.name('suppliers', u.supplierId) : u.schoolId ? DB.name('schools', u.schoolId) : u.talukaId ? `${DB.name('talukas', u.talukaId)} Taluka` : u.districtId ? `${DB.name('districts', u.districtId)} District` : u.nodeId ? DB.nodeName(u.nodeId) : 'Maharashtra State';
     const nav = NAV.map(s => { const items = s.items.filter(i => i.roles.includes(u.role)); return items.length ? `<div class="nav-sec">${t(s.section)}</div>${items.map(i => `<a class="nav-item ${i.page === page ? 'active' : ''}" href="${i.page}.html"><i class="bi bi-${i.icon}"></i><span>${t('page.' + i.page)}</span>${i.ai ? '<em class="ai-tag">AI</em>' : ''}</a>`).join('')}` : ''; }).join('');
     document.body.innerHTML = `
     <div class="app-shell">
@@ -264,7 +264,9 @@ const App = {
   guide() {
     const G = [
       ['admin@msdms.demo', 'State Super Admin', ['Open <b>Allocations & Requests</b> → <b>New Allocation</b> → Pune District Warehouse, 2,000 packets.']],
-      ['warehouse@msdms.demo', 'Central Warehouse Manager', ['<b>Procurement</b> → PO-2026-0006 → <b>Receive & QC</b> 10,000 packets (stock inward).', '<b>Shipments</b> → <b>New Shipment</b> → Pune District Warehouse, 2,000 packets (link the allocation).', 'Assign vehicle <b>MH12-AB-1234</b> and driver → Approve → Ready → Dispatch → <b>Start Trip</b>.']],
+      ['purchase@msdms.demo', 'Admin Employee (Purchase)', ['<b>Procurement</b> → <b>New Purchase Order</b> → choose a vendor and quantity. (PO-2026-0007 is already waiting for the vendor.)']],
+      ['vendor@msdms.demo', 'Vendor', ['<b>Vendor Portal</b> → <b>Accept</b> PO-2026-0007 → <b>Provide order</b> (batch, dates, vehicle). A shipment order to the Central Warehouse is created.']],
+      ['warehouse@msdms.demo', 'Central Warehouse Manager', ['<b>Procurement</b> → PO-2026-0006 (dispatched by the vendor) → <b>Receive & QC</b> 10,000 packets (stock inward).', '<b>Shipments</b> → <b>New Shipment</b> → Pune District Warehouse, 2,000 packets (link the allocation).', 'Assign vehicle <b>MH12-AB-1234</b> and driver → Approve → Ready → Dispatch → <b>Start Trip</b>.']],
       ['transport@msdms.demo', 'Transport Manager', ['<b>Live Tracking</b> → watch simulated GPS movement. Use <b>Fast-forward</b> to arrive.']],
       ['district@msdms.demo', 'District Officer (Pune)', ['<b>Deliveries & GRN</b> → Receive 2,000 packets → GRN generated.', '<b>Allocations</b> → New Allocation → Haveli Taluka DC, 1,000 packets → Create shipment → dispatch → fast-forward.']],
       ['taluka@msdms.demo', 'Taluka Officer (Haveli)', ['<b>Deliveries & GRN</b> → Receive 1,000 packets.', '<b>Allocations</b> → New Allocation → school SCH-001, 500 packets → Create shipment → dispatch → fast-forward.']],
@@ -286,7 +288,7 @@ const App = {
   /* ---------- Login screen ---------- */
   login() {
     const expired = sessionStorage.getItem('msdms_expired'); sessionStorage.removeItem('msdms_expired');
-    const icons = { STATE_ADMIN: 'bank', STATE_OFFICER: 'briefcase', DISTRICT_OFFICER: 'map', TALUKA_OFFICER: 'pin-map', CENTRAL_WH: 'house-gear', DISTRICT_WH: 'boxes', TALUKA_WH: 'box-seam', TRANSPORT_MGR: 'truck', DRIVER: 'steering-wheel', PRINCIPAL: 'mortarboard', EMPLOYEE: 'person-workspace', STUDENT: 'person-badge' };
+    const icons = { STATE_ADMIN: 'bank', STATE_OFFICER: 'briefcase', DISTRICT_OFFICER: 'map', TALUKA_OFFICER: 'pin-map', CENTRAL_WH: 'house-gear', DISTRICT_WH: 'boxes', TALUKA_WH: 'box-seam', TRANSPORT_MGR: 'truck', DRIVER: 'steering-wheel', PRINCIPAL: 'mortarboard', EMPLOYEE: 'person-workspace', STUDENT: 'person-badge', PURCHASE_OFFICER: 'cart-check', VENDOR: 'shop' };
     document.body.className = 'login-body';
     document.body.innerHTML = `<div class="login-wrap">
       <section class="login-hero">

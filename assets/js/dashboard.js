@@ -44,7 +44,7 @@ const Dash = {
     const narrow = f.taluka || f.school, base = id => narrow ? 0 : Stats.baseline(id);
     const nodeIds = d.nodes.filter(n => n.type === 'CENTRAL' ? !f.division && !f.district && !narrow : n.type === 'SCHOOL' ? sIds.includes(n.id) : n.type === 'TALUKA' ? tIds.includes(n.talukaId) && !f.school : dIds.includes(n.districtId) && !narrow).map(n => n.id);
     const ships = d.shipments.filter(s => nodeIds.includes(s.fromNode) || nodeIds.includes(s.toNode)), stu = d.students.filter(s => sIds.includes(s.schoolId));
-    const dispatched = U.sum(ships.filter(s => s.dispatchDate), s => s.qty), received = U.sum(ships, s => s.receivedQty || 0), distributed = base(dIds) + Stats.live(sIds);
+    const dispatched = U.sum(ships.filter(s => s.dispatchDate && !s.poId), s => s.qty), received = U.sum(ships.filter(s => !s.poId), s => s.receivedQty || 0), distributed = base(dIds) + Stats.live(sIds);
     const cov = Stats.coverage(sIds, f.month), alerts = Alerts.all();
     const opt = (list, sel, all) => `<option value="">${all}</option>` + list.map(x => `<option value="${x.id}" ${x.id === sel ? 'selected' : ''}>${esc(x.name)}</option>`).join('');
     const months = d.baseline.monthly.map(m => m.month).concat([U.month()]);
@@ -74,7 +74,7 @@ const Dash = {
     const dl = d.districts.filter(x => dIds.includes(x.id)), dval = x => base([x.id]) + Stats.live(schools.filter(s => s.districtId === x.id).map(s => s.id));
     this.bar('cDist', dl.map(x => x.name), dl.map(dval), 'Packets distributed');
     const doneM = months.slice(0, -1); UI.chart('cMon', { type: 'line', data: { labels: doneM.map(U.monthLabel), datasets: [{ label: 'Packets distributed', data: doneM.map(m => (narrow ? 0 : Stats.baseline(dIds, m)) + Stats.live(sIds, m)), borderColor: PALETTE[0], backgroundColor: 'rgba(67,56,202,.1)', fill: true, tension: .3 }] }, options: { plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true }, x: { grid: { display: false } } } } });
-    const pm = {}; d.batches.forEach(b => { const m = U.month(b.receivedOn); pm[m] = (pm[m] || 0) + b.approved; }); const pk = Object.keys(pm).sort();
+    const pm = {}; d.batches.filter(b => b.approved > 0).forEach(b => { const m = U.month(b.receivedOn); pm[m] = (pm[m] || 0) + b.approved; }); const pk = Object.keys(pm).sort();
     this.bar('cProc', pk.map(U.monthLabel), pk.map(k => pm[k]), 'Packets approved', PALETTE[2]);
     const tl = d.talukas.filter(x => tIds.includes(x.id)); this.bar('cTal', tl.map(x => x.name), tl.map(x => Stats.coverage(schools.filter(s => s.talukaId === x.id).map(s => s.id), f.month).pct), 'Coverage %', PALETTE[3]);
     const lv = ['CENTRAL', 'DISTRICT', 'TALUKA', 'SCHOOL'];
@@ -118,7 +118,7 @@ const Dash = {
 
   /* ---------- Transport manager ---------- */
   transport(root) {
-    const d = DB.d, act = d.shipments.filter(s => Ship.ACTIVE.includes(s.status)), docs = d.vehicles.filter(v => U.daysBetween(new Date(), v.insuranceTill) <= 30 || U.daysBetween(new Date(), v.fitnessTill) <= 30);
+    const d = DB.d, act = d.shipments.filter(s => Ship.ACTIVE.includes(s.status) && s.vehicleId), docs = d.vehicles.filter(v => U.daysBetween(new Date(), v.insuranceTill) <= 30 || U.daysBetween(new Date(), v.fitnessTill) <= 30);
     const done = d.shipments.filter(s => ['RECEIVED', 'PARTIALLY_RECEIVED'].includes(s.status)), unassigned = d.shipments.filter(s => ['APPROVED', 'READY_FOR_DISPATCH'].includes(s.status) && !s.vehicleId);
     root.innerHTML = UI.kpis([{ label: 'Fleet size', value: d.vehicles.length, icon: 'truck' }, { label: 'Vehicles on trip', value: d.vehicles.filter(v => v.status === 'ON_TRIP').length, icon: 'signpost-2', tone: 'blue' }, { label: 'Drivers available', value: d.drivers.filter(x => x.status === 'AVAILABLE').length, icon: 'person-vcard', tone: 'green' }, { label: 'Awaiting vehicle assignment', value: unassigned.length, icon: 'hourglass-split', tone: 'saffron' },
       { label: 'Delayed shipments', value: d.shipments.filter(s => s.status === 'DELAYED').length, icon: 'exclamation-triangle', tone: 'red' }, { label: 'GPS offline (simulated)', value: d.vehicles.filter(v => !v.gpsOnline).length, icon: 'wifi-off', tone: 'red' }, { label: 'Deliveries completed', value: done.length, icon: 'check-circle', tone: 'green' }, { label: 'Documents expiring ≤ 30 d', value: docs.length, icon: 'file-earmark-x', tone: 'saffron' }], 'kpi-4') +
@@ -139,6 +139,17 @@ const Dash = {
         <div class="d-grid gap-2">${cur.status === 'DISPATCHED' ? '<button class="btn btn-primary btn-lg" data-a="start"><i class="bi bi-play-fill"></i> Start trip</button>' : ''}${['IN_TRANSIT', 'DELAYED'].includes(cur.status) ? '<button class="btn btn-success btn-lg" data-a="ff"><i class="bi bi-geo-alt-fill"></i> Mark reached destination</button><button class="btn btn-outline-warning" data-a="delay"><i class="bi bi-clock"></i> Report delay</button>' : ''}${cur.status === 'REACHED_DESTINATION' ? '<div class="alert alert-success mb-0">Reached destination. Waiting for unloading and goods receipt.</div>' : ''}${cur.status === 'READY_FOR_DISPATCH' ? '<div class="alert alert-info mb-0">Loading in progress. Trip starts after dispatch by the warehouse.</div>' : ''}<a class="btn btn-outline-primary" href="tracking.html"><i class="bi bi-map"></i> Open map</a></div></div>` : UI.empty('No trip assigned right now.', 'truck'), { icon: 'signpost-2' })}
       ${UI.card('Trip history', this.shipRows(past, 10), { icon: 'clock-history', flush: true })}</div>`;
     $$('[data-a]').forEach(b => b.onclick = () => ShipUI.act(b.dataset.a, cur));
+  },
+
+  /* ---------- Admin employee (purchase) ---------- */
+  purchase(root) {
+    const d = DB.d, pos = d.purchaseOrders.slice().reverse(), cnt = st => pos.filter(p => st.includes(p.status)).length;
+    root.innerHTML = UI.kpis([{ label: 'Purchase orders', value: pos.length, icon: 'cart-check' }, { label: 'Awaiting vendor acceptance', value: cnt(['ORDERED']), icon: 'hourglass-split', tone: 'saffron' },
+      { label: 'Vendor to dispatch', value: cnt(['ACCEPTED', 'PARTIAL']), icon: 'box-seam', tone: 'blue' }, { label: 'In transit to warehouse', value: cnt(['DISPATCHED']), icon: 'truck', tone: 'blue' },
+      { label: 'Received', value: cnt(['RECEIVED']), icon: 'check-circle', tone: 'green' }, { label: 'Active vendors', value: d.suppliers.filter(s => s.status === 'ACTIVE').length, icon: 'shop' }], 'kpi-6') +
+      this.quick([['procurement', 'cart-plus', 'New purchase order'], ['procurement', 'shop', 'Vendors'], ['shipments', 'send-check', 'Vendor shipments'], ['notifications', 'bell', 'Notifications']]) +
+      `<div class="grid-2">${UI.card('Recent purchase orders', `<table class="table table-sm align-middle mb-0"><thead><tr><th>PO</th><th>Vendor</th><th class="text-end">Ordered</th><th class="text-end">Received</th><th>Status</th></tr></thead><tbody>${pos.slice(0, 8).map(p => `<tr><td><a href="procurement.html">${p.id}</a></td><td class="small">${esc(DB.name('suppliers', p.supplierId))}</td><td class="text-end">${U.num(p.qtyOrdered)}</td><td class="text-end">${U.num(p.qtyReceived)}</td><td>${UI.badge(p.status)}</td></tr>`).join('')}</tbody></table>`, { icon: 'cart-check', flush: true })}
+      ${UI.card('Vendor shipment orders', this.shipRows(Scope.shipments().slice().reverse()), { icon: 'truck', flush: true })}</div>`;
   },
 
   /* ---------- School principal / employee ---------- */
@@ -165,5 +176,5 @@ const Dash = {
 App.pages.dashboard = root => {
   const r = Auth.user().role;
   if (R_STATE.includes(r)) Dash.state(root); else if (R_GEO.includes(r)) Dash.geo(root); else if (R_WH.includes(r)) Dash.warehouse(root);
-  else if (r === 'TRANSPORT_MGR') Dash.transport(root); else if (r === 'DRIVER') Dash.driver(root); else Dash.school(root);
+  else if (r === 'TRANSPORT_MGR') Dash.transport(root); else if (r === 'DRIVER') Dash.driver(root); else if (r === 'PURCHASE_OFFICER') Dash.purchase(root); else Dash.school(root);
 };

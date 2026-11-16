@@ -57,7 +57,7 @@ const AI = {
   },
   /* ---- Delay-risk score for open shipments ---- */
   delayRisk() {
-    return Scope.shipments().filter(s => !['RECEIVED', 'PARTIALLY_RECEIVED', 'CANCELLED', 'REACHED_DESTINATION'].includes(s.status)).map(s => {
+    return Scope.shipments().filter(s => !s.poId && !['RECEIVED', 'PARTIALLY_RECEIVED', 'CANCELLED', 'REACHED_DESTINATION'].includes(s.status)).map(s => {
       const v = s.vehicleId && DB.get('vehicles', s.vehicleId), dr = s.driverId && DB.get('drivers', s.driverId), dist = Ship.distance(s), why = [];
       let score = 12 + Math.min(25, Math.round(dist / 12));
       if (dist > 150) why.push(`long route (${Math.round(dist)} km)`);

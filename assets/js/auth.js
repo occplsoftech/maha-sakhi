@@ -16,8 +16,9 @@ const R_WH = ['CENTRAL_WH', 'DISTRICT_WH', 'TALUKA_WH'];
 /* Navigation + page-level permissions (single source of truth) */
 const NAV = [
   { section: 'nav.overview', items: [
-    { page: 'dashboard', icon: 'speedometer2', roles: Object.keys(ROLES).filter(r => r !== 'STUDENT') },
+    { page: 'dashboard', icon: 'speedometer2', roles: Object.keys(ROLES).filter(r => !['STUDENT', 'VENDOR'].includes(r)) },
     { page: 'student-portal', icon: 'person-badge', roles: ['STUDENT'] },
+    { page: 'vendor-portal', icon: 'shop', roles: ['VENDOR'] },
     { page: 'ai-insights', icon: 'stars', roles: [...R_STATE, ...R_GEO, ...R_WH, 'TRANSPORT_MGR', 'PRINCIPAL'], ai: true },
     { page: 'notifications', icon: 'bell', roles: Object.keys(ROLES) }] },
   { section: 'nav.admin', items: [
@@ -28,14 +29,14 @@ const NAV = [
     { page: 'students', icon: 'people', roles: [...R_STATE, ...R_GEO, 'PRINCIPAL', 'EMPLOYEE'] },
     { page: 'distribution', icon: 'qr-code-scan', roles: ['PRINCIPAL', 'EMPLOYEE'] }] },
   { section: 'nav.supply', items: [
-    { page: 'procurement', icon: 'cart-check', roles: [...R_STATE, 'CENTRAL_WH'] },
+    { page: 'procurement', icon: 'cart-check', roles: [...R_STATE, 'CENTRAL_WH', 'PURCHASE_OFFICER'] },
     { page: 'warehouses', icon: 'house-gear', roles: [...R_STATE, ...R_GEO, ...R_WH] },
     { page: 'inventory', icon: 'box-seam', roles: [...R_STATE, ...R_GEO, ...R_WH, 'PRINCIPAL', 'EMPLOYEE'] },
     { page: 'allocations', icon: 'diagram-3', roles: [...R_STATE, ...R_GEO, ...R_WH, 'PRINCIPAL'] }] },
   { section: 'nav.transport', items: [
     { page: 'vehicles', icon: 'truck', roles: [...R_STATE, 'TRANSPORT_MGR'] },
     { page: 'tracking', icon: 'broadcast-pin', roles: [...R_STATE, ...R_GEO, ...R_WH, 'TRANSPORT_MGR', 'DRIVER'] },
-    { page: 'shipments', icon: 'send-check', roles: [...R_STATE, ...R_GEO, ...R_WH, 'TRANSPORT_MGR', 'DRIVER', 'PRINCIPAL'] },
+    { page: 'shipments', icon: 'send-check', roles: [...R_STATE, ...R_GEO, ...R_WH, 'TRANSPORT_MGR', 'DRIVER', 'PRINCIPAL', 'PURCHASE_OFFICER'] },
     { page: 'deliveries', icon: 'clipboard-check', roles: ['STATE_ADMIN', ...R_GEO, 'DISTRICT_WH', 'TALUKA_WH', 'PRINCIPAL', 'EMPLOYEE'] }] },
   { section: 'nav.governance', items: [
     { page: 'reports', icon: 'file-earmark-bar-graph', roles: [...R_STATE, ...R_GEO, ...R_WH, 'TRANSPORT_MGR', 'PRINCIPAL'] },
@@ -50,6 +51,9 @@ const CAPS = {
   'emp.manage': ['STATE_ADMIN', 'PRINCIPAL'],
   'student.edit': ['STATE_ADMIN', 'PRINCIPAL'],
   'proc.manage': ['STATE_ADMIN', 'CENTRAL_WH'],
+  'po.create': ['STATE_ADMIN', 'PURCHASE_OFFICER'],
+  'vendor.manage': ['STATE_ADMIN', 'PURCHASE_OFFICER'],
+  'user.manage': ['STATE_ADMIN'],
   'stock.manage': ['STATE_ADMIN', ...R_WH, ...R_GEO, 'PRINCIPAL', 'EMPLOYEE'],
   'ship.create': ['STATE_ADMIN', ...R_WH, ...R_GEO],
   'ship.transport': ['STATE_ADMIN', 'TRANSPORT_MGR'],
@@ -89,7 +93,7 @@ const Auth = {
     if (this._u) { Audit.log('Authentication', 'LOGOUT', this._u.id); DB.save(); }
     localStorage.removeItem(SESSION_KEY); this._u = null;
   },
-  home(u = this.user()) { return u && u.role === 'STUDENT' ? 'student-portal.html' : 'dashboard.html'; },
+  home(u = this.user()) { return u && u.role === 'STUDENT' ? 'student-portal.html' : u && u.role === 'VENDOR' ? 'vendor-portal.html' : 'dashboard.html'; },
   can(cap) { const u = this.user(); return !!u && (CAPS[cap] || []).includes(u.role); },
   canPage(page) { const u = this.user(); return !!u && NAV.some(s => s.items.some(i => i.page === page && i.roles.includes(u.role))); },
   is(...roles) { const u = this.user(); return !!u && roles.includes(u.role); },
@@ -121,7 +125,7 @@ const Scope = {
   },
   /* Nodes whose stock the user may VIEW */
   nodes() {
-    const u = Auth.user(), N = DB.d.nodes;
+    const u = Auth.user(), N = DB.d.nodes.filter(n => n.type !== 'VENDOR');
     if (Auth.is(...R_STATE, 'TRANSPORT_MGR')) return N;
     if (u.role === 'CENTRAL_WH') return N.filter(n => n.type === 'CENTRAL' || n.type === 'DISTRICT');
     if (u.schoolId) return N.filter(n => n.id === u.schoolId);
@@ -134,7 +138,7 @@ const Scope = {
   ownNodeIds() {
     const u = Auth.user();
     switch (u.role) {
-      case 'STATE_ADMIN': return DB.d.nodes.map(n => n.id);
+      case 'STATE_ADMIN': return DB.d.nodes.filter(n => n.type !== 'VENDOR').map(n => n.id);
       case 'CENTRAL_WH': return ['WH-CEN'];
       case 'DISTRICT_OFFICER': case 'DISTRICT_WH': return [`WH-${u.districtId}`];
       case 'TALUKA_OFFICER': case 'TALUKA_WH': return [`DC-${u.talukaId}`];
@@ -147,6 +151,8 @@ const Scope = {
     const u = Auth.user(), S = DB.d.shipments;
     if (Auth.is(...R_STATE, 'TRANSPORT_MGR')) return S;
     if (u.role === 'DRIVER') return S.filter(s => s.driverId === u.driverId);
+    if (u.role === 'VENDOR') return S.filter(s => s.vendorId === u.supplierId);
+    if (u.role === 'PURCHASE_OFFICER') return S.filter(s => s.poId);
     if (u.role === 'CENTRAL_WH') return S.filter(s => s.fromNode === 'WH-CEN' || s.toNode === 'WH-CEN');
     const ids = this.nodeIds(); return S.filter(s => ids.includes(s.fromNode) || ids.includes(s.toNode));
   },
@@ -154,7 +160,10 @@ const Scope = {
     const u = Auth.user(), ids = Auth.is(...R_STATE) ? null : this.nodeIds();
     return DB.d.notifications.filter(n => {
       if (u.role === 'STUDENT') return n.studentId === u.studentId;
+      if (u.role === 'VENDOR') return n.supplierId === u.supplierId;
       if (n.studentId) return false;
+      if (u.role === 'PURCHASE_OFFICER') return !!n.supplierId || /^PO_/.test(n.event);
+      if (n.supplierId && !n.nodes.length && ids) return false;
       if (u.role === 'DRIVER') return n.roles.includes('DRIVER');
       if (!ids) return true;
       if (u.role === 'TRANSPORT_MGR') return /VEHICLE|DISPATCH|DELIVERY/.test(n.event);
